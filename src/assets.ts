@@ -6,7 +6,7 @@ export const DEFAULT_CSS = `/* Ob2Static — minimal stylesheet */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --sidebar-width: 16rem;
+  --sidebar-width: 10rem;
 }
 
 body {
@@ -43,7 +43,7 @@ body {
   flex-direction: column;
 }
 
-main { flex: 1; }
+main { flex: 1; font-size: 1.15rem; }
 main h1, main h2, main h3 { margin-top: 1.4em; margin-bottom: 0.4em; }
 main p { margin-bottom: 0.8em; }
 main ul, main ol { margin-left: 1.5rem; margin-bottom: 0.8em; }
