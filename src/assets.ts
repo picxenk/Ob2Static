@@ -5,21 +5,45 @@
 export const DEFAULT_CSS = `/* Ob2Static — minimal stylesheet */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+:root {
+  --sidebar-width: 16rem;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.6;
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
   color: #222;
   background: #fafafa;
 }
 
-header { margin-bottom: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 1rem; }
-header nav ul { list-style: none; display: flex; gap: 1rem; }
-header nav a { text-decoration: none; color: #0366d6; }
+/* ---- Sidebar (fixed left) ---- */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.5rem 1rem;
+  background: #f0f0f0;
+  border-right: 1px solid #ddd;
+}
+.sidebar ul { list-style: none; }
+.sidebar li { margin-bottom: 0.3em; }
+.sidebar a { text-decoration: none; color: #0366d6; }
+.sidebar a:hover { text-decoration: underline; }
 
-main { min-height: 60vh; }
+/* ---- Page area (right of sidebar) ---- */
+.page {
+  margin-left: var(--sidebar-width);
+  max-width: 48rem;
+  padding: 2rem 2rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main { flex: 1; }
 main h1, main h2, main h3 { margin-top: 1.4em; margin-bottom: 0.4em; }
 main p { margin-bottom: 0.8em; }
 main ul, main ol { margin-left: 1.5rem; margin-bottom: 0.8em; }
@@ -31,4 +55,18 @@ main a { color: #0366d6; }
 main hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
 
 footer { margin-top: 2rem; border-top: 1px solid #ddd; padding-top: 1rem; font-size: 0.85em; color: #666; }
+
+/* ---- Responsive: small screens ---- */
+@media (max-width: 768px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+  }
+  .page {
+    margin-left: 0;
+  }
+}
 `;

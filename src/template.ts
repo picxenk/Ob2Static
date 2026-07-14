@@ -17,14 +17,16 @@ export function renderPage(data: PageData): string {
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <link rel="stylesheet" href="${rootPath}assets/style.css">
 </head>
 <body>
-<header>
+<nav class="sidebar">
 ${menu}
-</header>
+</nav>
 
+<div class="page">
 <main>
 ${content}
 </main>
@@ -32,6 +34,7 @@ ${content}
 <footer>
 ${footer}
 </footer>
+</div>
 </body>
 </html>
 `;

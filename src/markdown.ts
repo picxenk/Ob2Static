@@ -5,30 +5,69 @@
  * and Obsidian wiki-links  [[Page]]  /  [[Page|alias]].
  */
 
-/** Convert `[[Page]]` and `[[Page|alias]]` to `<a>` tags. */
-function convertWikiLinks(md: string): string {
-  // [[Page|display]] → <a href="Page.html">display</a>
-  // [[Page]]         → <a href="Page.html">Page</a>
+/**
+ * Compute a relative path from `fromDir` to `toPath`.
+ * Both are forward-slash separated, relative to the output root.
+ * e.g. relPath("notes/sub", "assets/img.png") → "../../assets/img.png"
+ *      relPath("", "notes/Page.html")         → "notes/Page.html"
+ */
+function relPath(fromDir: string, toPath: string): string {
+  if (!fromDir) return toPath;
+  const ups = fromDir.split("/").length;
+  return "../".repeat(ups) + toPath;
+}
+
+/**
+ * Convert `[[Page]]` and `[[Page|alias]]` to `<a>` tags.
+ * Uses a lookup map (basename → output path relative to output root)
+ * and the current page's directory to produce correct relative hrefs.
+ */
+function convertWikiLinks(
+  md: string,
+  pageMap: Map<string, string>,
+  currentDir: string
+): string {
   return md.replace(/\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, page, alias) => {
-    const href = page.trim().replace(/ /g, "%20") + ".html";
-    const text = (alias || page).trim();
+    const name = page.trim();
+    // Strip any folder prefix — Obsidian resolves by basename
+    const basename = name.includes("/")
+      ? name.substring(name.lastIndexOf("/") + 1)
+      : name;
+    const targetPath = pageMap.get(basename);
+    const href = targetPath
+      ? relPath(currentDir, targetPath)
+      : basename.replace(/ /g, "%20") + ".html";
+    const text = (alias || basename).trim();
     return `<a href="${href}">${text}</a>`;
   });
 }
 
-/** Convert Obsidian image embeds  ![[image.png]]  to <img> tags. */
-function convertImageEmbeds(md: string): string {
+/**
+ * Convert Obsidian image embeds  ![[image.png]]  to <img> tags.
+ * Images are always in output `assets/` so we need a relative path from
+ * the current page's directory.
+ */
+function convertImageEmbeds(md: string, currentDir: string): string {
   return md.replace(/!\[\[([^\]]+?)\]\]/g, (_m, file) => {
-    const src = "assets/" + file.trim();
-    return `<img src="${src}" alt="${file.trim()}">`;
+    const assetPath = relPath(currentDir, "assets/" + file.trim());
+    return `<img src="${assetPath}" alt="${file.trim()}">`;
   });
 }
 
-/** Very small Markdown → HTML converter (no external deps). */
-export function markdownToHtml(md: string): string {
+/**
+ * Very small Markdown → HTML converter (no external deps).
+ * @param pageMap     basename (without .md) → output path from root
+ * @param currentDir  directory of the current page relative to output root
+ *                    (e.g. "" for root, "notes/sub" for nested)
+ */
+export function markdownToHtml(
+  md: string,
+  pageMap: Map<string, string> = new Map(),
+  currentDir: string = ""
+): string {
   // Pre-process wiki-links and image embeds
-  let text = convertImageEmbeds(md);
-  text = convertWikiLinks(text);
+  let text = convertImageEmbeds(md, currentDir);
+  text = convertWikiLinks(text, pageMap, currentDir);
 
   const lines = text.split("\n");
   const out: string[] = [];

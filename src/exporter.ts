@@ -1,9 +1,8 @@
-import { App, TFile, TFolder, Vault, Notice } from "obsidian";
+import { App, TFile, TFolder, Notice } from "obsidian";
 import { markdownToHtml } from "./markdown";
 import { renderPage } from "./template";
 import { DEFAULT_CSS } from "./assets";
 
-const RESERVED = ["Index.md", "Menu.md", "Footer.md"];
 const IGNORE_DIRS = [".obsidian", "output"];
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
 
@@ -28,34 +27,52 @@ export class SiteExporter {
     // 3. Gather all markdown files (skip ignored dirs)
     const mdFiles = this.getMdFiles();
 
-    // 4. Read reserved pages
-    const menuHtml = await this.readReserved("Menu.md");
-    const footerHtml = await this.readReserved("Footer.md");
+    // 4. Filter convertible pages and build page map.
+    //    pageMap: basename → output path relative to output root (folder preserved).
+    //    Obsidian resolves wiki-links by basename, so the map enables cross-folder lookups.
+    const pages = mdFiles.filter(
+      (f) => f.name !== "MENU.md" && f.name !== "FOOTER.md"
+    );
 
-    // 5. Copy image attachments
+    const pageMap = new Map<string, string>();
+    for (const file of pages) {
+      const htmlPath =
+        file.name === "Index.md"
+          ? "index.html"
+          : file.path.replace(/\.md$/, ".html");
+      pageMap.set(file.basename, htmlPath);
+    }
+
+    // 5. Read raw markdown for reserved pages (rendered per-page with correct paths)
+    const menuMd = await this.readReservedMd("MENU.md");
+    const footerMd = await this.readReservedMd("FOOTER.md");
+
+    // 6. Copy image attachments
     await this.copyImages(outDir);
 
-    // 6. Convert each page
+    // 7. Convert each page (preserving vault folder structure)
     let count = 0;
-    for (const file of mdFiles) {
-      if (this.isIgnored(file.path)) continue;
-
+    for (const file of pages) {
       const md = await vault.cachedRead(file);
-      const contentHtml = markdownToHtml(md);
+
+      const relativePath =
+        file.name === "Index.md"
+          ? "index.html"
+          : file.path.replace(/\.md$/, ".html");
+
+      // Directory of this page relative to output root
+      const pageDir = relativePath.includes("/")
+        ? relativePath.substring(0, relativePath.lastIndexOf("/"))
+        : "";
+
+      const contentHtml = markdownToHtml(md, pageMap, pageDir);
+
+      // Menu and footer are rendered per-page so their links/images
+      // use the correct relative paths for each page's depth.
+      const menuHtml = menuMd ? markdownToHtml(menuMd, pageMap, pageDir) : "";
+      const footerHtml = footerMd ? markdownToHtml(footerMd, pageMap, pageDir) : "";
 
       const title = file.basename;
-      const isIndex = file.name === "Index.md";
-      const isReservedOnly =
-        file.name === "Menu.md" || file.name === "Footer.md";
-
-      if (isReservedOnly) continue; // don't generate standalone pages
-
-      // Determine output path
-      const relativePath = isIndex
-        ? "index.html"
-        : file.path.replace(/\.md$/, ".html");
-
-      // Calculate root-relative prefix
       const depth = relativePath.split("/").length - 1;
       const rootPath = depth > 0 ? "../".repeat(depth) : "";
 
@@ -68,11 +85,8 @@ export class SiteExporter {
       });
 
       // Ensure subdirectories exist
-      const dir = relativePath.includes("/")
-        ? outDir + "/" + relativePath.substring(0, relativePath.lastIndexOf("/"))
-        : null;
-      if (dir) {
-        await this.ensureDir(dir);
+      if (pageDir) {
+        await this.ensureDir(outDir + "/" + pageDir);
       }
 
       await adapter.write(outDir + "/" + relativePath, html);
@@ -96,11 +110,11 @@ export class SiteExporter {
     );
   }
 
-  private async readReserved(name: string): Promise<string> {
+  /** Read a reserved page and return raw markdown (not converted). */
+  private async readReservedMd(name: string): Promise<string> {
     const file = this.app.vault.getAbstractFileByPath(name);
     if (file && file instanceof TFile) {
-      const md = await this.app.vault.cachedRead(file);
-      return markdownToHtml(md);
+      return await this.app.vault.cachedRead(file);
     }
     return "";
   }
