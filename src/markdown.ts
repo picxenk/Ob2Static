@@ -184,6 +184,9 @@ function inline(text: string): string {
   s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
   s = s.replace(/_(.+?)_/g, "<em>$1</em>");
 
+  // Auto-link bare URLs (not already inside an <a> or <img> tag — those are placeholders now)
+  s = s.replace(/(https?:\/\/[^\s<>\x00]+)/g, '<a href="$1">$1</a>');
+
   // Restore preserved HTML tags
   s = s.replace(/\x00HTAG(\d+)\x00/g, (_m, idx) => preserved[Number(idx)]);
 
