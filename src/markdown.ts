@@ -141,9 +141,10 @@ export function markdownToHtml(
       continue;
     }
 
-    // --- blank line ---
+    // --- blank line → visible spacing ---
     if (line.trim() === "") {
       flushList();
+      out.push("<br>");
       continue;
     }
 
