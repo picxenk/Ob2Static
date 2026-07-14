@@ -128,12 +128,26 @@ function inline(text: string): string {
   s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
   // links (standard markdown)
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  // Protect existing HTML tags from underscore-based formatting.
+  // Without this, filenames like "my_photo_2024.png" inside <img> src/alt
+  // attributes would be corrupted by the italic/bold regex below.
+  const preserved: string[] = [];
+  s = s.replace(/<[^>]+>/g, (tag) => {
+    preserved.push(tag);
+    return `\x00HTAG${preserved.length - 1}\x00`;
+  });
+
   // bold
   s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/__(.+?)__/g, "<strong>$1</strong>");
   // italic
   s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
   s = s.replace(/_(.+?)_/g, "<em>$1</em>");
+
+  // Restore preserved HTML tags
+  s = s.replace(/\x00HTAG(\d+)\x00/g, (_m, idx) => preserved[Number(idx)]);
+
   return s;
 }
 
