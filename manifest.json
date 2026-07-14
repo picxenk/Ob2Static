@@ -1,0 +1,9 @@
+{
+  "id": "ob2static",
+  "name": "Ob2Static",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Export an Obsidian vault as a minimal static website.",
+  "author": "picxenk",
+  "isDesktopOnly": true
+}
