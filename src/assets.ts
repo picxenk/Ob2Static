@@ -13,7 +13,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.6;
   color: #222;
-  background: #fafafa;
+  background: #fff;
 }
 
 /* ---- Sidebar (fixed left) ---- */
@@ -25,13 +25,32 @@ body {
   height: 100vh;
   overflow-y: auto;
   padding: 1.5rem 1rem;
-  background: #f0f0f0;
-  border-right: 1px solid #ddd;
+  background: #fff;
+  border-right: 1px solid #222;
 }
 .sidebar ul { list-style: none; }
 .sidebar li { margin-bottom: 0.3em; }
 .sidebar a { text-decoration: none; color: #0366d6; }
 .sidebar a:hover { text-decoration: underline; }
+
+/* ---- Menu toggle (<details>) ---- */
+.menu > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::before { content: "\\2630"; margin-right: 0.5em; }
+.menu[open] > summary::before { content: "\\2715"; }
+
+/* Desktop: always show menu, hide the toggle (browsers supporting ::details-content) */
+@supports selector(::details-content) {
+  @media (min-width: 769px) {
+    .menu > summary { display: none; }
+    .menu::details-content { content-visibility: visible; }
+  }
+}
 
 /* ---- Page area (right of sidebar) ---- */
 .page {
@@ -56,17 +75,164 @@ main hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
 
 footer { margin-top: 2rem; border-top: 1px solid #ddd; padding-top: 1rem; font-size: 0.85em; color: #666; }
 
+/* ---- Table of contents (frontmatter toc: true) ---- */
+html { scroll-behavior: smooth; }
+main [id] { scroll-margin-top: 1rem; }
+
+.toc { font-size: 0.9rem; }
+.toc-box {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+.toc-box > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+.toc-box > summary::-webkit-details-marker { display: none; }
+.toc-box > summary::before { content: "\\25B8"; display: inline-block; width: 1.1em; }
+.toc-box[open] > summary::before { content: "\\25BE"; }
+.toc-box[open] > summary { margin-bottom: 0.4rem; }
+.toc ul { list-style: none; }
+.toc ul ul { padding-left: 0.9rem; }
+.toc li { margin: 0.25em 0; line-height: 1.4; }
+.toc a {
+  display: block;
+  padding-left: 0.5rem;
+  border-left: 3px solid transparent;
+  color: #555;
+  text-decoration: none;
+}
+.toc a:hover { color: #0366d6; text-decoration: underline; }
+/* Current section (set by assets/toc.js while scrolling) */
+.toc a.active {
+  font-weight: 700;
+  color: #222;
+  border-left-color: #0366d6;
+}
+
+/* Wide screens: TOC as a sticky column on the right */
+@media (min-width: 1100px) {
+  .page.has-toc {
+    display: grid;
+    grid-template-columns: minmax(0, 48rem) 13rem;
+    grid-template-rows: 1fr auto;
+    column-gap: 2.5rem;
+    max-width: calc(48rem + 13rem + 2.5rem + 4rem);
+  }
+  .page.has-toc > main { grid-column: 1; grid-row: 1; }
+  .page.has-toc > footer { grid-column: 1; grid-row: 2; }
+  .page.has-toc > .toc {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    position: sticky;
+    top: 2rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+  }
+  .toc-box { border: none; border-left: 1px solid #ddd; border-radius: 0; padding: 0 0 0 1rem; }
+}
+
+/* Wide screens: always open, hide the toggle (browsers supporting ::details-content) */
+@supports selector(::details-content) {
+  @media (min-width: 1100px) {
+    .toc-box > summary { pointer-events: none; }
+    .toc-box > summary::before { content: none; }
+    .toc-box::details-content { content-visibility: visible; }
+    .toc-box > summary { margin-bottom: 0.4rem; }
+  }
+}
+
 /* ---- Responsive: small screens ---- */
 @media (max-width: 768px) {
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 10;
     width: 100%;
     height: auto;
+    padding: 0;
     border-right: none;
     border-bottom: 1px solid #ddd;
+  }
+  .menu > summary { padding: 0.75rem 1rem; }
+  .menu-body {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0 1rem 1rem;
   }
   .page {
     margin-left: 0;
   }
+  /* Keep headings clear of the sticky menu bar when jumping to an anchor */
+  main [id] { scroll-margin-top: 4rem; }
 }
+`;
+
+/**
+ * Scroll-spy for the table of contents.
+ * Highlights the TOC link of the last heading that has scrolled past the top.
+ * Only included on pages with `toc: true`.
+ */
+export const TOC_JS = `/* Ob2Static — TOC scroll-spy */
+(function () {
+  var toc = document.querySelector(".toc");
+  if (!toc) return;
+
+  // Pair each TOC link with its heading
+  var items = [];
+  toc.querySelectorAll('a[href^="#"]').forEach(function (a) {
+    var el = document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1)));
+    if (el) items.push({ link: a, heading: el });
+  });
+  if (!items.length) return;
+
+  // A heading counts as "passed" once its top is above this line (px from viewport top).
+  // Must be larger than the CSS scroll-margin-top so clicked headings become active.
+  var OFFSET = 80;
+  var current = null;
+
+  function update() {
+    var active = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].heading.getBoundingClientRect().top <= OFFSET) active = items[i];
+      else break;
+    }
+    // At the very bottom, short last sections can never reach the top: activate the last one
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      active = items[items.length - 1];
+    }
+    if (active === current) return;
+    if (current) current.link.classList.remove("active");
+    current = active;
+    if (current) {
+      current.link.classList.add("active");
+      keepVisible(current.link);
+    }
+  }
+
+  // If the TOC itself scrolls (long lists), keep the active link in view — without scrolling the page
+  function keepVisible(link) {
+    if (toc.scrollHeight <= toc.clientHeight) return;
+    var t = link.getBoundingClientRect().top - toc.getBoundingClientRect().top + toc.scrollTop;
+    if (t < toc.scrollTop || t + link.offsetHeight > toc.scrollTop + toc.clientHeight) {
+      toc.scrollTop = t - toc.clientHeight / 3;
+    }
+  }
+
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { ticking = false; update(); });
+  }
+
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  update();
+})();
 `;

@@ -27,8 +27,19 @@ function convertWikiLinks(
   pageMap: Map<string, string>,
   currentDir: string
 ): string {
-  return md.replace(/\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, page, alias) => {
-    const name = page.trim();
+  return md.replace(/\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, target, alias) => {
+    // Split "Page#Heading" → page / heading  (heading-only: "#Heading")
+    const hashIdx = target.indexOf("#");
+    const name = (hashIdx >= 0 ? target.substring(0, hashIdx) : target).trim();
+    const heading = hashIdx >= 0 ? target.substring(hashIdx + 1).trim() : "";
+    const anchor = heading ? "#" + slugify(heading) : "";
+
+    // Same-page heading link: [[#Heading]]
+    if (!name) {
+      const text = (alias || heading).trim();
+      return `<a href="${anchor}">${text}</a>`;
+    }
+
     // Strip any folder prefix — Obsidian resolves by basename
     const basename = name.includes("/")
       ? name.substring(name.lastIndexOf("/") + 1)
@@ -37,8 +48,8 @@ function convertWikiLinks(
     const href = targetPath
       ? relPath(currentDir, targetPath)
       : basename.replace(/ /g, "%20") + ".html";
-    const text = (alias || basename).trim();
-    return `<a href="${href}">${text}</a>`;
+    const text = (alias || (heading ? `${basename} &gt; ${heading}` : basename)).trim();
+    return `<a href="${href}${anchor}">${text}</a>`;
   });
 }
 
@@ -48,10 +59,48 @@ function convertWikiLinks(
  * the current page's directory.
  */
 function convertImageEmbeds(md: string, currentDir: string): string {
-  return md.replace(/!\[\[([^\]]+?)\]\]/g, (_m, file) => {
-    const assetPath = relPath(currentDir, "assets/" + file.trim());
-    return `<img src="${assetPath}" alt="${file.trim()}">`;
+  return md.replace(/!\[\[([^\]]+?)\]\]/g, (_m, raw) => {
+    const parts = raw.trim().split("|");
+    const filename = parts[0].trim();
+    const width = parts[1]?.trim();
+    const assetPath = relPath(currentDir, "assets/" + filename);
+    const widthAttr = width ? ` width="${width}"` : "";
+    return `<img src="${assetPath}" alt="${filename}"${widthAttr}>`;
   });
+}
+
+export interface Heading {
+  level: number;
+  /** Plain text (HTML tags stripped) */
+  text: string;
+  id: string;
+}
+
+export interface RenderResult {
+  html: string;
+  headings: Heading[];
+}
+
+/**
+ * Remove a leading YAML frontmatter block (`---` … `---`).
+ * Metadata is read via Obsidian's metadataCache, never rendered.
+ */
+export function stripFrontmatter(md: string): string {
+  return md.replace(/^\uFEFF?---\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/, "");
+}
+
+/**
+ * Turn heading text into an anchor id.
+ * Keeps letters (incl. Korean) and digits, spaces → "-".
+ */
+export function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]/gu, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 /**
@@ -65,12 +114,26 @@ export function markdownToHtml(
   pageMap: Map<string, string> = new Map(),
   currentDir: string = ""
 ): string {
+  return renderMarkdown(md, pageMap, currentDir).html;
+}
+
+/** Same as markdownToHtml, but also returns the collected headings. */
+export function renderMarkdown(
+  md: string,
+  pageMap: Map<string, string> = new Map(),
+  currentDir: string = ""
+): RenderResult {
+  // Frontmatter is metadata only — never rendered
+  let text = stripFrontmatter(md);
+
   // Pre-process wiki-links and image embeds
-  let text = convertImageEmbeds(md, currentDir);
+  text = convertImageEmbeds(text, currentDir);
   text = convertWikiLinks(text, pageMap, currentDir);
 
   const lines = text.split("\n");
   const out: string[] = [];
+  const headings: Heading[] = [];
+  const usedIds = new Map<string, number>();
   let inCodeBlock = false;
   let inList: "ul" | "ol" | null = null;
 
@@ -113,7 +176,17 @@ export function markdownToHtml(
     if (headingMatch) {
       flushList();
       const level = headingMatch[1].length;
-      out.push(`<h${level}>${inline(headingMatch[2])}</h${level}>`);
+      const inner = inline(headingMatch[2].trim());
+      const plain = stripTags(inner);
+
+      // Unique id: "intro", "intro-1", "intro-2", ...
+      const base = slugify(plain) || "section";
+      const seen = usedIds.get(base) ?? 0;
+      usedIds.set(base, seen + 1);
+      const id = seen === 0 ? base : `${base}-${seen}`;
+
+      headings.push({ level, text: plain, id });
+      out.push(`<h${level} id="${id}">${inner}</h${level}>`);
       continue;
     }
 
@@ -156,7 +229,54 @@ export function markdownToHtml(
   flushList();
   if (inCodeBlock) out.push("</code></pre>");
 
-  return out.join("\n");
+  return { html: out.join("\n"), headings };
+}
+
+/**
+ * Build a nested <ul> table of contents from headings.
+ * Levels are normalized to the shallowest heading present; skipped levels
+ * (e.g. h2 → h4) are clamped to one step deeper.
+ */
+export function buildTocHtml(headings: Heading[]): string {
+  if (headings.length === 0) return "";
+
+  const minLevel = Math.min(...headings.map((h) => h.level));
+  const out: string[] = [];
+  let depth = 0;
+
+  for (const h of headings) {
+    const lvl = Math.min(h.level - minLevel + 1, depth + 1);
+    if (lvl > depth) {
+      out.push("<ul>");
+      depth = lvl;
+    } else {
+      out.push("</li>");
+      while (depth > lvl) {
+        out.push("</ul></li>");
+        depth--;
+      }
+    }
+    out.push(`<li><a href="#${h.id}">${escapeHtml(h.text)}</a>`);
+  }
+
+  out.push("</li>");
+  while (depth > 1) {
+    out.push("</ul></li>");
+    depth--;
+  }
+  out.push("</ul>");
+
+  return out.join("");
+}
+
+/** Strip HTML tags and decode the few entities we produce. */
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
 }
 
 /** Process inline formatting: bold, italic, inline code, images, links. */

@@ -1,7 +1,7 @@
 import { App, TFile, TFolder, Notice } from "obsidian";
-import { markdownToHtml } from "./markdown";
+import { markdownToHtml, renderMarkdown, buildTocHtml } from "./markdown";
 import { renderPage } from "./template";
-import { DEFAULT_CSS } from "./assets";
+import { DEFAULT_CSS, TOC_JS } from "./assets";
 
 const IGNORE_DIRS = [".obsidian", "output"];
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
@@ -23,6 +23,7 @@ export class SiteExporter {
 
     // 2. Write default stylesheet
     await adapter.write(outDir + "/assets/style.css", DEFAULT_CSS);
+    await adapter.write(outDir + "/assets/toc.js", TOC_JS);
 
     // 3. Gather all markdown files (skip ignored dirs)
     const mdFiles = this.getMdFiles();
@@ -65,7 +66,10 @@ export class SiteExporter {
         ? relativePath.substring(0, relativePath.lastIndexOf("/"))
         : "";
 
-      const contentHtml = markdownToHtml(md, pageMap, pageDir);
+      const { html: contentHtml, headings } = renderMarkdown(md, pageMap, pageDir);
+
+      // Frontmatter `toc: true` → render a table of contents
+      const tocHtml = this.wantsToc(file) ? buildTocHtml(headings) : "";
 
       // Menu and footer are rendered per-page so their links/images
       // use the correct relative paths for each page's depth.
@@ -80,6 +84,7 @@ export class SiteExporter {
         title,
         menu: menuHtml,
         content: contentHtml,
+        toc: tocHtml,
         footer: footerHtml,
         rootPath,
       });
@@ -97,6 +102,13 @@ export class SiteExporter {
   }
 
   // --- helpers ---
+
+  /** True if the note's frontmatter has `toc: true`. */
+  private wantsToc(file: TFile): boolean {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const v = fm?.toc;
+    return v === true || (typeof v === "string" && v.toLowerCase() === "true");
+  }
 
   private getMdFiles(): TFile[] {
     return this.app.vault
