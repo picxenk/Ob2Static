@@ -32,6 +32,12 @@ body {
 .sidebar li { margin-bottom: 0.3em; }
 .sidebar a { text-decoration: none; color: #0366d6; }
 .sidebar a:hover { text-decoration: underline; }
+/* Full-bleed divider: negative margins cancel the side padding (1rem) */
+.sidebar hr {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 0.8em -1rem;
+}
 
 /* ---- Menu toggle (<details>) ---- */
 .menu > summary {
