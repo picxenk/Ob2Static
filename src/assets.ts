@@ -32,6 +32,28 @@ body {
 .sidebar li { margin-bottom: 0.3em; }
 .sidebar a { text-decoration: none; color: #0366d6; }
 .sidebar a:hover { text-decoration: underline; }
+/* ---- External links ---- */
+/* "↗" after links to other sites ([text](https://…)); bare URLs and image links don't get it */
+a.external::after {
+  content: "\\2197";
+  display: inline-block;       /* keeps the arrow out of the underline */
+  margin-left: 0.15em;
+  font-size: 0.8em;
+  text-decoration: none;
+}
+/* Visually hidden, still read by screen readers (e.g. "(새 창)") */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Full-bleed divider: negative margins cancel the side padding (1rem) */
 .sidebar hr {
   border: none;

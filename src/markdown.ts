@@ -303,6 +303,8 @@ export function buildTocHtml(headings: Heading[]): string {
 /** Strip HTML tags and decode the few entities we produce. */
 function stripTags(html: string): string {
   return html
+    // Screen-reader-only hints (e.g. "(새 창)") are not part of the visible text
+    .replace(/<span class="sr-only">[^<]*<\/span>/g, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -310,26 +312,74 @@ function stripTags(html: string): string {
     .trim();
 }
 
+/** Links to other sites (as opposed to wiki-links, relative paths and #anchors). */
+function isExternal(href: string): boolean {
+  return /^(https?:)?\/\//i.test(href.trim());
+}
+
+/** Attributes that open a link in a new tab safely. */
+const NEW_TAB_ATTRS = ' target="_blank" rel="noopener noreferrer"';
+/** Announced by screen readers only (visually hidden via CSS). */
+const NEW_TAB_HINT = '<span class="sr-only"> (새 창)</span>';
+
+function hostname(href: string): string {
+  try {
+    return new URL(href.startsWith("//") ? "https:" + href : href).hostname;
+  } catch {
+    return "";
+  }
+}
+
 /** Process inline formatting: bold, italic, inline code, images, links. */
 function inline(text: string): string {
   let s = text;
-  // inline code
-  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  // Protected fragments, restored at the end. Keeps HTML (and code spans)
+  // safe from the bold/italic/autolink regexes below — e.g. filenames like
+  // "my_photo_2024.png" in <img> attributes, or `my_var` inside code.
+  const preserved: string[] = [];
+  const stash = (html: string) => {
+    preserved.push(html);
+    return `\x00HTAG${preserved.length - 1}\x00`;
+  };
+
+  // inline code — stashed whole so nothing inside gets formatted or linked
+  s = s.replace(/`([^`]+)`/g, (_m, code: string) => stash(`<code>${code}</code>`));
+
   // images (standard markdown)
   s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, src: string) => {
     const parts = alt.split("|");
     return `<img src="${src}"${imageAttrs(parts.slice(1), parts[0].trim())}>`;
   });
-  // links (standard markdown)
-  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
-  // Protect existing HTML tags from underscore-based formatting.
-  // Without this, filenames like "my_photo_2024.png" inside <img> src/alt
-  // attributes would be corrupted by the italic/bold regex below.
-  const preserved: string[] = [];
-  s = s.replace(/<[^>]+>/g, (tag) => {
-    preserved.push(tag);
-    return `\x00HTAG${preserved.length - 1}\x00`;
+  // links (standard markdown)
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, href: string) => {
+    if (!isExternal(href)) return `<a href="${href}">${label}</a>`;
+    // External: new tab + "↗" marker (class), except for image links
+    // and links whose visible text is already a URL
+    const noMarker = /<img\b/i.test(label) || /^https?:\/\//i.test(label.trim());
+    const host = hostname(href);
+    const cls = noMarker ? "" : ' class="external"';
+    const title = host ? ` title="${host}"` : "";
+    return `<a href="${href}"${cls}${title}${NEW_TAB_ATTRS}>${label}${NEW_TAB_HINT}</a>`;
+  });
+
+  // Protect remaining HTML tags from underscore-based formatting
+  s = s.replace(/<[^>]+>/g, (tag) => stash(tag));
+
+  // Auto-link bare URLs: new tab only (the URL itself shows it's external, so no "↗").
+  // Runs before bold/italic so underscores in URLs stay intact, and skips
+  // URLs that are already the text of a link, e.g. [https://x](https://x).
+  let anchorDepth = 0;
+  s = s.replace(/\x00HTAG(\d+)\x00|(https?:\/\/[^\s<>\x00]+)/g, (m, idx, url) => {
+    if (idx !== undefined) {
+      const tag = preserved[Number(idx)];
+      if (/^<a[\s>]/i.test(tag)) anchorDepth++;
+      else if (/^<\/a>/i.test(tag)) anchorDepth--;
+      return m;
+    }
+    if (anchorDepth > 0) return stash(url);
+    return stash(`<a href="${url}"${NEW_TAB_ATTRS}>${url}${NEW_TAB_HINT}</a>`);
   });
 
   // bold
@@ -338,9 +388,6 @@ function inline(text: string): string {
   // italic
   s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
   s = s.replace(/_(.+?)_/g, "<em>$1</em>");
-
-  // Auto-link bare URLs (not already inside an <a> or <img> tag — those are placeholders now)
-  s = s.replace(/(https?:\/\/[^\s<>\x00]+)/g, '<a href="$1">$1</a>');
 
   // Restore preserved HTML tags
   s = s.replace(/\x00HTAG(\d+)\x00/g, (_m, idx) => preserved[Number(idx)]);
