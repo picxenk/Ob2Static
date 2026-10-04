@@ -54,6 +54,39 @@ function convertWikiLinks(
 }
 
 /**
+ * Parse Obsidian image options after the first "|", in any order:
+ *   left | right   → float alignment (class)
+ *   200 | 200x100  → width / height
+ *   anything else  → alt text
+ * e.g. ![[photo.png|left|200]]  or  ![photo|right|300](url)
+ */
+function imageAttrs(options: string[], fallbackAlt: string): string {
+  let cls = "";
+  let width = "";
+  let height = "";
+  const altParts: string[] = [];
+
+  for (const raw of options) {
+    const opt = raw.trim();
+    if (!opt) continue;
+    const size = opt.match(/^(\d+)(?:x(\d+))?$/);
+    if (opt === "left" || opt === "right") cls = opt;
+    else if (size) {
+      width = size[1];
+      height = size[2] ?? "";
+    } else altParts.push(opt);
+  }
+
+  const alt = (altParts.join(" ") || fallbackAlt).replace(/"/g, "&quot;");
+  return (
+    ` alt="${alt}"` +
+    (cls ? ` class="${cls}"` : "") +
+    (width ? ` width="${width}"` : "") +
+    (height ? ` height="${height}"` : "")
+  );
+}
+
+/**
  * Convert Obsidian image embeds  ![[image.png]]  to <img> tags.
  * Images are always in output `assets/` so we need a relative path from
  * the current page's directory.
@@ -62,10 +95,8 @@ function convertImageEmbeds(md: string, currentDir: string): string {
   return md.replace(/!\[\[([^\]]+?)\]\]/g, (_m, raw) => {
     const parts = raw.trim().split("|");
     const filename = parts[0].trim();
-    const width = parts[1]?.trim();
     const assetPath = relPath(currentDir, "assets/" + filename);
-    const widthAttr = width ? ` width="${width}"` : "";
-    return `<img src="${assetPath}" alt="${filename}"${widthAttr}>`;
+    return `<img src="${assetPath}"${imageAttrs(parts.slice(1), filename)}>`;
   });
 }
 
@@ -285,7 +316,10 @@ function inline(text: string): string {
   // inline code
   s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
   // images (standard markdown)
-  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, src: string) => {
+    const parts = alt.split("|");
+    return `<img src="${src}"${imageAttrs(parts.slice(1), parts[0].trim())}>`;
+  });
   // links (standard markdown)
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 

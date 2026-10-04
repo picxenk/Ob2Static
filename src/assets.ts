@@ -70,6 +70,15 @@ main pre { background: #f0f0f0; padding: 1rem; overflow-x: auto; margin-bottom: 
 main code { background: #f0f0f0; padding: 0.15em 0.3em; border-radius: 3px; font-size: 0.9em; }
 main pre code { background: none; padding: 0; }
 main img { max-width: 100%; height: auto; }
+
+/* Floated images: ![[img.png|left|200]] / ![[img.png|right|200]]
+   Text starts at the image's top edge and wraps around it. */
+main img.left  { float: left;  margin: 0.3em 1.2rem 0.6rem 0; max-width: 50%; }
+main img.right { float: right; margin: 0.3em 0 0.6rem 1.2rem; max-width: 50%; }
+/* Headings and rules start below any floated image */
+main h1, main h2, main h3, main h4, main h5, main h6, main hr { clear: both; }
+/* Keep floats inside the content area (don't overlap the footer) */
+main { display: flow-root; }
 main a { color: #0366d6; }
 main hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
 
@@ -170,6 +179,16 @@ main [id] { scroll-margin-top: 1rem; }
   }
   /* Keep headings clear of the sticky menu bar when jumping to an anchor */
   main [id] { scroll-margin-top: 4rem; }
+}
+
+/* Very narrow screens: stack floated images above the text */
+@media (max-width: 480px) {
+  main img.left, main img.right {
+    float: none;
+    display: block;
+    max-width: 100%;
+    margin: 0 0 0.8em;
+  }
 }
 `;
 
