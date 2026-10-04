@@ -1,7 +1,7 @@
 import { App, TFile, TFolder, Notice } from "obsidian";
 import { markdownToHtml, renderMarkdown, buildTocHtml } from "./markdown";
 import { renderPage } from "./template";
-import { DEFAULT_CSS, TOC_JS } from "./assets";
+import { DEFAULT_CSS, TOC_JS, P5_SKETCH_JS } from "./assets";
 
 const IGNORE_DIRS = [".obsidian", "output"];
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
@@ -24,6 +24,7 @@ export class SiteExporter {
     // 2. Write default stylesheet
     await adapter.write(outDir + "/assets/style.css", DEFAULT_CSS);
     await adapter.write(outDir + "/assets/toc.js", TOC_JS);
+    await adapter.write(outDir + "/assets/p5-sketch.js", P5_SKETCH_JS);
 
     // 3. Gather all markdown files (skip ignored dirs)
     const mdFiles = this.getMdFiles();

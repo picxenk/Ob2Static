@@ -184,8 +184,26 @@ main [id] { scroll-margin-top: 1rem; }
   }
 }
 
+/* ---- p5.js sketches (\`\`\`p5 / \`\`\`p5 bg code blocks) ---- */
+/* Background: fixed behind the content area, starting right of the sidebar */
+.p5-bg {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;   /* links stay clickable; p5 still tracks mouseX/mouseY */
+}
+.p5-bg canvas { display: block; }
+/* Inline: canvas in the flow of the content */
+.p5-inline { margin: 1em 0; }
+.p5-inline canvas { display: block; max-width: 100%; height: auto !important; }
+
 /* ---- Responsive: small screens ---- */
 @media (max-width: 768px) {
+  .p5-bg { left: 0; }
   .sidebar {
     position: sticky;
     top: 0;
@@ -218,6 +236,88 @@ main [id] { scroll-margin-top: 1rem; }
     margin: 0 0 0.8em;
   }
 }
+`;
+
+/** p5.js library (loaded only on pages with p5 code blocks). */
+export const P5_CDN_URL = "https://cdn.jsdelivr.net/npm/p5@1/lib/p5.min.js";
+
+/**
+ * Runs ```p5 / ```p5 bg code blocks.
+ * Each block becomes its own p5 instance (so several sketches can share a page),
+ * while the note's code is written in ordinary global-mode style
+ * (function setup() { createCanvas(...) } ...).
+ *
+ * Inside the sketch, windowWidth / windowHeight report the size of the
+ * sketch's area instead of the browser window:
+ *   bg     → the background area (content side, excluding the sidebar)
+ *   inline → width of the content column (height = window height)
+ */
+export const P5_SKETCH_JS = `/* Ob2Static — p5.js sketch runner */
+(function () {
+  if (typeof p5 === "undefined") return;
+
+  // p5 callbacks a sketch may define
+  var HOOKS = ["preload", "setup", "draw", "windowResized",
+    "mousePressed", "mouseReleased", "mouseClicked", "doubleClicked",
+    "mouseMoved", "mouseDragged", "mouseWheel",
+    "keyPressed", "keyReleased", "keyTyped",
+    "touchStarted", "touchMoved", "touchEnded",
+    "deviceMoved", "deviceTurned", "deviceShaken"];
+
+  // Wrap global-mode code: names resolve to the p5 instance via with(),
+  // and function declarations are collected afterwards as callbacks.
+  function compile(code) {
+    var body =
+      "with (p) { with (__area) {\\n" + code + "\\n} }\\n" +
+      "var __hooks = {};\\n" +
+      HOOKS.map(function (n) {
+        return "if (typeof " + n + " === 'function') __hooks." + n + " = " + n + ";";
+      }).join("\\n") +
+      "\\nreturn __hooks;";
+    return new Function("p", "__area", body);
+  }
+
+  document.querySelectorAll(".p5-sketch").forEach(function (box) {
+    var src = box.querySelector('script[type="text/p5"]');
+    if (!src) return;
+    var isBg = box.classList.contains("p5-bg");
+
+    var factory;
+    try {
+      factory = compile(src.textContent);
+    } catch (e) {
+      console.error("[p5 sketch] syntax error:", e);
+      return;
+    }
+
+    // Size of the sketch's area, exposed as windowWidth / windowHeight
+    var area = Object.create(null);
+    Object.defineProperty(area, "windowWidth", {
+      get: function () { return box.clientWidth; }
+    });
+    Object.defineProperty(area, "windowHeight", {
+      get: function () { return isBg ? box.clientHeight : window.innerHeight; }
+    });
+
+    new p5(function (p) {
+      var hooks;
+      try {
+        hooks = factory(p, area);
+      } catch (e) {
+        console.error("[p5 sketch] error:", e);
+        return;
+      }
+      Object.keys(hooks).forEach(function (k) { p[k] = hooks[k]; });
+
+      // Background fills its area: follow window resizes unless the sketch handles it
+      if (isBg && !hooks.windowResized) {
+        p.windowResized = function () {
+          p.resizeCanvas(box.clientWidth, box.clientHeight);
+        };
+      }
+    }, box);
+  });
+})();
 `;
 
 /**

@@ -155,18 +155,14 @@ export function renderMarkdown(
   currentDir: string = ""
 ): RenderResult {
   // Frontmatter is metadata only — never rendered
-  let text = stripFrontmatter(md);
-
-  // Pre-process wiki-links and image embeds
-  text = convertImageEmbeds(text, currentDir);
-  text = convertWikiLinks(text, pageMap, currentDir);
-
-  const lines = text.split("\n");
+  const lines = stripFrontmatter(md).split("\n");
   const out: string[] = [];
   const headings: Heading[] = [];
   const usedIds = new Map<string, number>();
-  let inCodeBlock = false;
   let inList: "ul" | "ol" | null = null;
+
+  // Open fenced code block: its info string (e.g. "js", "p5 bg") and raw lines
+  let fence: { info: string; lines: string[] } | null = null;
 
   const flushList = () => {
     if (inList) {
@@ -176,24 +172,30 @@ export function renderMarkdown(
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const rawLine = lines[i];
 
-    // --- fenced code blocks ---
-    if (line.trim().startsWith("```")) {
-      if (inCodeBlock) {
-        out.push("</code></pre>");
-        inCodeBlock = false;
+    // --- fenced code blocks (content is kept verbatim) ---
+    if (rawLine.trim().startsWith("```")) {
+      if (fence) {
+        out.push(renderFence(fence.info, fence.lines));
+        fence = null;
       } else {
         flushList();
-        out.push("<pre><code>");
-        inCodeBlock = true;
+        fence = { info: rawLine.trim().slice(3).trim(), lines: [] };
       }
       continue;
     }
-    if (inCodeBlock) {
-      out.push(escapeHtml(line));
+    if (fence) {
+      fence.lines.push(rawLine);
       continue;
     }
+
+    // Wiki-links and image embeds — outside code blocks only
+    const line = convertWikiLinks(
+      convertImageEmbeds(rawLine, currentDir),
+      pageMap,
+      currentDir
+    );
 
     // --- horizontal rule ---
     if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) {
@@ -258,9 +260,35 @@ export function renderMarkdown(
   }
 
   flushList();
-  if (inCodeBlock) out.push("</code></pre>");
+  // Unclosed fence at end of document: render what we have
+  if (fence) out.push(renderFence(fence.info, fence.lines));
 
   return { html: out.join("\n"), headings };
+}
+
+/**
+ * Render a fenced code block.
+ *   ```p5      → p5.js sketch, canvas placed here in the content
+ *   ```p5 bg   → p5.js sketch as a fixed background behind the content area
+ *   ```lang    → <pre><code class="language-lang">
+ * p5 code is not shown; assets/p5-sketch.js runs it (see template).
+ */
+function renderFence(info: string, codeLines: string[]): string {
+  const code = codeLines.join("\n");
+  const [lang = "", ...opts] = info.split(/\s+/);
+
+  if (lang.toLowerCase() === "p5") {
+    const bg = opts.some((o) => o.toLowerCase() === "bg");
+    // "</script" inside the code would end the <script> element early
+    const safe = code.replace(/<\/script/gi, "<\\/script");
+    return bg
+      ? `<div class="p5-sketch p5-bg" aria-hidden="true"><script type="text/p5">\n${safe}\n</script></div>`
+      : `<div class="p5-sketch p5-inline"><script type="text/p5">\n${safe}\n</script></div>`;
+  }
+
+  const safeLang = lang.replace(/[^\w+#.-]/g, "");
+  const cls = safeLang ? ` class="language-${safeLang}"` : "";
+  return `<pre><code${cls}>${escapeHtml(code)}</code></pre>`;
 }
 
 /**

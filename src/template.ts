@@ -2,6 +2,8 @@
  * Wrap page content with the shared HTML template.
  */
 
+import { P5_CDN_URL } from "./assets";
+
 export interface PageData {
   title: string;
   menu: string;
@@ -24,6 +26,15 @@ ${toc}
 </aside>
 `
     : "";
+
+  // p5.js only on pages that contain ```p5 / ```p5 bg blocks
+  const hasP5 = /class="p5-sketch/.test(menu + content + footer);
+  const p5Scripts = hasP5
+    ? `<script src="${P5_CDN_URL}" defer></script>
+<script src="${rootPath}assets/p5-sketch.js" defer></script>
+`
+    : "";
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -31,7 +42,7 @@ ${toc}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <link rel="stylesheet" href="${rootPath}assets/style.css">
-${toc ? `<script src="${rootPath}assets/toc.js" defer></script>\n` : ""}</head>
+${toc ? `<script src="${rootPath}assets/toc.js" defer></script>\n` : ""}${p5Scripts}</head>
 <body>
 <nav class="sidebar">
 <details class="menu">
